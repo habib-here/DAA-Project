@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cstring>
 #include <climits>
+#include <cmath>
 
 using namespace std;
 
@@ -10,20 +11,19 @@ const int MAX_NODES = 40001;
 const int MAX_EDGES = 120001;
 const int INF = INT_MAX;
 
-// Edge structure for adjacency list
+// using linked list approach for edges - better memory usage than matrix for sparse graphs
 struct Edge {
     int to;
     int weight;
     Edge* next;
 };
 
-// Graph structure using adjacency list with arrays
 class Graph {
 private:
     Edge* adjacencyList[MAX_NODES];
     int nodeCount;
     int edgeCount;
-    int degree[MAX_NODES]; // For heuristic function h(n)
+    int degree[MAX_NODES]; // needed this for A* heuristic later
     
 public:
     Graph() {
@@ -48,7 +48,6 @@ public:
     }
     
     void addEdge(int u, int v, int weight) {
-        // Add edge u -> v
         Edge* newEdge1 = new Edge();
         newEdge1->to = v;
         newEdge1->weight = weight;
@@ -56,7 +55,7 @@ public:
         adjacencyList[u] = newEdge1;
         degree[u]++;
         
-        // Add edge v -> u (undirected graph)
+        // making it bidirectional since social network is undirected
         Edge* newEdge2 = new Edge();
         newEdge2->to = u;
         newEdge2->weight = weight;
@@ -81,7 +80,7 @@ public:
         return nodeCount;
     }
     
-    // Dijkstra's Algorithm
+    // standard dijkstra - relaxes edges based on shortest distance so far
     void dijkstra(int source, int destination, int* dist, int* parent) {
         bool visited[MAX_NODES];
         
@@ -95,7 +94,7 @@ public:
         dist[source] = 0;
         
         for (int count = 0; count < nodeCount; count++) {
-            // Find minimum distance vertex
+            // greedy selection: pick unvisited node with min distance
             int minDist = INF;
             int u = -1;
             
@@ -110,7 +109,7 @@ public:
             
             visited[u] = true;
             
-            // Update distances of neighbors
+            // relaxation step - check if going through u gives shorter path
             Edge* edge = adjacencyList[u];
             while (edge != nullptr) {
                 int v = edge->to;
@@ -126,11 +125,12 @@ public:
         }
     }
     
-    // A* Algorithm with heuristic h(n) = degree of node
+    // A* tries to be smarter than dijkstra by using heuristic
+    // h(n) = node degree seemed reasonable - high degree nodes are well-connected
     void aStar(int source, int destination, int* dist, int* parent) {
         bool visited[MAX_NODES];
-        int gScore[MAX_NODES]; // Actual cost from source
-        int fScore[MAX_NODES]; // gScore + heuristic
+        int gScore[MAX_NODES]; // g(n): actual cost from start
+        int fScore[MAX_NODES]; // f(n) = g(n) + h(n), guides the search
         
         // Initialize
         for (int i = 0; i < nodeCount; i++) {
@@ -141,10 +141,10 @@ public:
         }
         
         gScore[source] = 0;
-        fScore[source] = degree[source]; // h(source)
+        fScore[source] = degree[source];
         
         while (true) {
-            // Find node with minimum fScore
+            // pick node that looks most promising (lowest f-score)
             int minF = INF;
             int current = -1;
             
@@ -159,7 +159,6 @@ public:
             
             visited[current] = true;
             
-            // Explore neighbors
             Edge* edge = adjacencyList[current];
             while (edge != nullptr) {
                 int neighbor = edge->to;
@@ -171,7 +170,6 @@ public:
                     if (tentativeG < gScore[neighbor]) {
                         parent[neighbor] = current;
                         gScore[neighbor] = tentativeG;
-                        // f(n) = g(n) + h(n), where h(n) = degree of neighbor
                         fScore[neighbor] = gScore[neighbor] + degree[neighbor];
                     }
                 }
@@ -192,7 +190,7 @@ public:
             return;
         }
         
-        // Build path using parent array
+        // backtrack through parent pointers to reconstruct path
         int path[MAX_NODES];
         int pathLength = 0;
         int current = destination;
@@ -202,7 +200,6 @@ public:
             current = parent[current];
         }
         
-        // Print path in reverse
         cout << "Path: ";
         for (int i = pathLength - 1; i >= 0; i--) {
             cout << path[i];
@@ -236,16 +233,17 @@ public:
     }
 };
 
-// Dynamic Programming for longest increasing influence path
+// DP approach: memoization to avoid recalculating paths
+// finding longest chain where influence keeps increasing
 class InfluenceAnalyzer {
 private:
     int influences[MAX_NODES];
-    int dp[MAX_NODES]; // dp[i] = longest increasing path ending at i
-    int parent[MAX_NODES]; // To reconstruct the path
+    int dp[MAX_NODES]; // memoization: stores max path length ending at node i
+    int parent[MAX_NODES]; // for backtracking
     Graph* graph;
     
     int dfs(int node, bool* visited) {
-        if (dp[node] != -1) return dp[node];
+        if (dp[node] != -1) return dp[node]; // already computed
         
         visited[node] = true;
         dp[node] = 1;
@@ -255,7 +253,7 @@ private:
         while (edge != nullptr) {
             int neighbor = edge->to;
             
-            // Only follow edges where influence increases
+            // constraint: can only move to higher influence users
             if (influences[neighbor] > influences[node]) {
                 int length = 1 + dfs(neighbor, visited);
                 if (length > dp[node]) {
@@ -298,13 +296,13 @@ public:
     }
     
     void findLongestInfluencePath() {
+        // try every node as potential start of influence chain
         int maxLength = 0;
         int startNode = -1;
         bool visited[MAX_NODES] = {false};
         
         cout << "\nComputing longest influence chain..." << endl;
         
-        // Try all nodes as starting points
         for (int i = 0; i < graph->getNodeCount(); i++) {
             int length = dfs(i, visited);
             if (length > maxLength) {
@@ -317,7 +315,6 @@ public:
         cout << "Maximum chain length: " << maxLength << endl;
         cout << "Chain: ";
         
-        // Reconstruct and print the path
         int current = startNode;
         int count = 0;
         while (current != -1 && count < maxLength) {
@@ -418,7 +415,7 @@ int main() {
     cout << "\n--- Performance Comparison ---" << endl;
     cout << "Dijkstra time: " << timeDijkstra << " ms" << endl;
     cout << "A* time:       " << timeAStar << " ms" << endl;
-    cout << "Difference:    " << abs(timeDijkstra - timeAStar) << " ms" << endl;
+    cout << "Difference:    " << fabs(timeDijkstra - timeAStar) << " ms" << endl;
     
     if (timeDijkstra < timeAStar) {
         cout << "Result: Dijkstra was faster" << endl;
